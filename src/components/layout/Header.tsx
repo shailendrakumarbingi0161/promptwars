@@ -1,8 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useSimulation } from '@/context/SimulationContext';
 import { minsToTime } from '@/lib/timeUtils';
+import { toggleSound, isSoundEnabled, playRadarBlip } from '@/lib/soundEffects';
 import { 
   Radio, 
   Clock, 
@@ -13,7 +14,9 @@ import {
   Pause, 
   Zap, 
   Github,
-  Plane
+  Plane,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 
 export default function Header() {
@@ -30,6 +33,14 @@ export default function Header() {
     resetAll,
     loadPreset
   } = useSimulation();
+
+  const [soundOn, setSoundOn] = useState(isSoundEnabled());
+
+  const handleToggleSound = () => {
+    const next = toggleSound();
+    setSoundOn(next);
+    if (next) playRadarBlip();
+  };
 
   return (
     <header className="sticky top-0 z-50 bg-[#070b14]/90 backdrop-blur-md border-b border-aviation-cardBorder px-4 py-2.5 flex items-center justify-between text-white">
@@ -57,19 +68,28 @@ export default function Header() {
       <div className="hidden lg:flex items-center space-x-2">
         <span className="text-xs font-mono text-slate-400">Presets:</span>
         <button 
-          onClick={() => loadPreset('delhi_fog')}
+          onClick={() => {
+            loadPreset('delhi_fog');
+            playRadarBlip();
+          }}
           className="text-xs font-mono px-2.5 py-1 rounded bg-slate-800/80 hover:bg-aviation-cyan/20 hover:text-aviation-cyan border border-slate-700 transition"
         >
           DEL Morning Fog (+120m)
         </button>
         <button 
-          onClick={() => loadPreset('mumbai_monsoon')}
+          onClick={() => {
+            loadPreset('mumbai_monsoon');
+            playRadarBlip();
+          }}
           className="text-xs font-mono px-2.5 py-1 rounded bg-slate-800/80 hover:bg-aviation-cyan/20 hover:text-aviation-cyan border border-slate-700 transition"
         >
           BOM Monsoon Storm (+150m)
         </button>
         <button 
-          onClick={() => loadPreset('bengaluru_tech')}
+          onClick={() => {
+            loadPreset('bengaluru_tech');
+            playRadarBlip();
+          }}
           className="text-xs font-mono px-2.5 py-1 rounded bg-slate-800/80 hover:bg-aviation-cyan/20 hover:text-aviation-cyan border border-slate-700 transition"
         >
           BLR Runway Hold (+90m)
@@ -77,18 +97,24 @@ export default function Header() {
       </div>
 
       {/* Telemetry & Mode Switch */}
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center space-x-2.5">
         {/* Scenario Mode Indicator */}
         {recoveredSim && (
           <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg p-0.5 text-xs font-mono">
             <button
-              onClick={() => setIsRecoveryMode(false)}
+              onClick={() => {
+                setIsRecoveryMode(false);
+                playRadarBlip();
+              }}
               className={`px-2.5 py-1 rounded-md transition ${!isRecoveryMode ? 'bg-aviation-rose text-white font-semibold' : 'text-slate-400 hover:text-white'}`}
             >
               Disrupted
             </button>
             <button
-              onClick={() => setIsRecoveryMode(true)}
+              onClick={() => {
+                setIsRecoveryMode(true);
+                playRadarBlip();
+              }}
               className={`px-2.5 py-1 rounded-md transition ${isRecoveryMode ? 'bg-aviation-cyan text-slate-950 font-bold' : 'text-slate-400 hover:text-white'}`}
             >
               Recovered
@@ -110,6 +136,19 @@ export default function Header() {
             {isPlaying ? <Pause className="w-3.5 h-3.5 text-amber-400" /> : <Play className="w-3.5 h-3.5 text-emerald-400" />}
           </button>
         </div>
+
+        {/* Sound FX Toggle */}
+        <button
+          onClick={handleToggleSound}
+          className={`p-1.5 rounded-lg border text-xs transition ${
+            soundOn 
+              ? 'bg-aviation-cyan/10 border-aviation-cyan/30 text-aviation-cyan' 
+              : 'bg-aviation-dark border-aviation-cardBorder text-slate-500 hover:text-slate-300'
+          }`}
+          title={soundOn ? 'ATC Sound FX Enabled' : 'ATC Sound FX Muted'}
+        >
+          {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+        </button>
 
         {/* Reset button */}
         <button

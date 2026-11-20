@@ -3,8 +3,20 @@
 import React, { useState, useMemo } from 'react';
 import { useSimulation } from '@/context/SimulationContext';
 import { AUTHORITATIVE_DATASET, AIRPORTS_MAP } from '@/data/authoritativeDataset';
+import { INDIA_BORDER_COORDS, SRI_LANKA_COORDS, FIR_REGIONS } from '@/data/indiaGeoData';
 import { Airport, FlightSimResult } from '@/types';
-import { Plane, AlertTriangle, ShieldCheck, MapPin, Radio, Compass } from 'lucide-react';
+import { playRadarBlip } from '@/lib/soundEffects';
+import { 
+  Plane, 
+  AlertTriangle, 
+  ShieldCheck, 
+  MapPin, 
+  Radio, 
+  Compass, 
+  Eye, 
+  Layers,
+  Crosshair
+} from 'lucide-react';
 
 export default function NetworkMap() {
   const { 
@@ -17,16 +29,20 @@ export default function NetworkMap() {
   } = useSimulation();
 
   const [hoveredAirport, setHoveredAirport] = useState<Airport | null>(null);
+  const [showFirSectors, setShowFirSectors] = useState(true);
+  const [showRadarSweep, setShowRadarSweep] = useState(true);
 
   // Geographic projection bounds for India
-  const width = 800;
-  const height = 750;
-  const paddingX = 70;
-  const paddingY = 60;
-  const minLng = 71.0;
-  const maxLng = 93.0;
-  const minLat = 7.5;
-  const maxLat = 32.0;
+  const width = 850;
+  const height = 780;
+  const paddingX = 65;
+  const paddingY = 55;
+  
+  // Projection bounding box encompassing full India + Island territories
+  const minLng = 68.0;
+  const maxLng = 97.0;
+  const minLat = 6.8;
+  const maxLat = 36.5;
 
   const project = (lat: number, lng: number) => {
     const x = paddingX + ((lng - minLng) / (maxLng - minLng)) * (width - 2 * paddingX);
@@ -34,13 +50,34 @@ export default function NetworkMap() {
     return { x, y };
   };
 
-  // Pre-calculate positions
+  // Projected India Landmass SVG Path
+  const indiaSvgPath = useMemo(() => {
+    return INDIA_BORDER_COORDS.map((coord, idx) => {
+      const pt = project(coord[0], coord[1]);
+      return `${idx === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`;
+    }).join(' ') + ' Z';
+  }, []);
+
+  // Projected Sri Lanka SVG Path
+  const sriLankaSvgPath = useMemo(() => {
+    return SRI_LANKA_COORDS.map((coord, idx) => {
+      const pt = project(coord[0], coord[1]);
+      return `${idx === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`;
+    }).join(' ') + ' Z';
+  }, []);
+
+  // Pre-calculate airport positions
   const airportCoords = useMemo(() => {
     const coords: Record<string, { x: number; y: number; airport: Airport }> = {};
     for (const a of AUTHORITATIVE_DATASET.airports) {
       coords[a.id] = { ...project(a.lat, a.lng), airport: a };
     }
     return coords;
+  }, []);
+
+  // Projected FIR dividing crosshairs (Nagpur Center is the geographic crossroads of Indian FIRs)
+  const firCrossroads = useMemo(() => {
+    return project(21.1458, 79.0882); // Nagpur FIR Center
   }, []);
 
   // Compute unique airport pairs (routes) and determine status
@@ -74,40 +111,84 @@ export default function NetworkMap() {
   }, [currentSim, replayTimeMins]);
 
   return (
-    <div className="relative w-full h-full min-h-[600px] flex flex-col items-center justify-center bg-aviation-darkest/90 rounded-xl border border-aviation-cardBorder overflow-hidden select-none">
+    <div className="relative w-full h-full min-h-[620px] flex flex-col items-center justify-center bg-[#050912] rounded-xl border border-aviation-cardBorder overflow-hidden select-none">
       {/* HUD Radar Overlay Header */}
       <div className="absolute top-3 left-4 z-10 flex items-center space-x-2 text-xs font-mono text-aviation-cyan">
-        <Compass className="w-4 h-4 animate-spin text-aviation-cyan/70" style={{ animationDuration: '20s' }} />
-        <span>AIRSPACE RADAR TRACKER // INDIA SUB-CONTINENT</span>
+        <Compass className="w-4 h-4 animate-spin text-aviation-cyan/70" style={{ animationDuration: '24s' }} />
+        <span className="font-bold tracking-wider">AIRSPACE RADAR TRACKER // INDIA FLIGHT INFORMATION REGION (FIR)</span>
       </div>
 
-      <div className="absolute top-3 right-4 z-10 flex items-center space-x-4 text-[11px] font-mono">
-        <div className="flex items-center space-x-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-          <span className="text-slate-400">On Time</span>
-        </div>
-        <div className="flex items-center space-x-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-          <span className="text-slate-400">Minor Delay (&lt;60m)</span>
-        </div>
-        <div className="flex items-center space-x-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-          <span className="text-slate-400">Severe / Closed</span>
-        </div>
+      {/* Map Layer Controls */}
+      <div className="absolute top-3 right-4 z-10 flex items-center space-x-2 text-[11px] font-mono">
+        <button
+          onClick={() => setShowFirSectors(!showFirSectors)}
+          className={`px-2 py-1 rounded border transition flex items-center gap-1 ${
+            showFirSectors 
+              ? 'bg-aviation-cyan/15 text-aviation-cyan border-aviation-cyan/30' 
+              : 'bg-slate-900/80 text-slate-500 border-slate-800'
+          }`}
+          title="Toggle FIR Airspace Sectors"
+        >
+          <Layers className="w-3 h-3" />
+          <span>FIR Sectors</span>
+        </button>
+
+        <button
+          onClick={() => setShowRadarSweep(!showRadarSweep)}
+          className={`px-2 py-1 rounded border transition flex items-center gap-1 ${
+            showRadarSweep 
+              ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' 
+              : 'bg-slate-900/80 text-slate-500 border-slate-800'
+          }`}
+          title="Toggle Radar Sweep Beam"
+        >
+          <Radio className="w-3 h-3" />
+          <span>Radar Sweep</span>
+        </button>
       </div>
 
-      {/* Main SVG Radar Map */}
+      {/* Main SVG Radar Map with India Subcontinent */}
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full max-w-[850px] h-auto drop-shadow-2xl"
+        className="w-full max-w-[880px] h-auto drop-shadow-2xl"
       >
         <defs>
-          <radialGradient id="radarGrid" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#00e5ff" stopOpacity="0.04" />
-            <stop offset="100%" stopColor="#00e5ff" stopOpacity="0" />
+          {/* Radial grid gradient */}
+          <radialGradient id="radarGridGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#00e5ff" stopOpacity="0.03" />
+            <stop offset="60%" stopColor="#00e5ff" stopOpacity="0.01" />
+            <stop offset="100%" stopColor="#070b14" stopOpacity="0" />
           </radialGradient>
-          <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="3" result="blur" />
+
+          {/* India landmass gradient */}
+          <linearGradient id="indiaLandmass" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#0c1829" stopOpacity="0.95" />
+            <stop offset="50%" stopColor="#0a1422" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#070f1c" stopOpacity="0.95" />
+          </linearGradient>
+
+          {/* Ocean Water Pattern */}
+          <pattern id="oceanGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <line x1="0" y1="0" x2="40" y2="0" stroke="#0e1d33" strokeWidth="0.5" strokeOpacity="0.3" />
+            <line x1="0" y1="0" x2="0" y2="40" stroke="#0e1d33" strokeWidth="0.5" strokeOpacity="0.3" />
+          </pattern>
+
+          {/* Radar Sweep Rotating Beam Gradient */}
+          <linearGradient id="sweepBeam" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#00e5ff" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#00e5ff" stopOpacity="0" />
+          </linearGradient>
+
+          <filter id="cyanGlow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="3.5" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+
+          <filter id="subtleGlow" x="-10%" y="-10%" width="120%" height="120%">
+            <feGaussianBlur stdDeviation="2" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
@@ -115,27 +196,111 @@ export default function NetworkMap() {
           </filter>
         </defs>
 
-        {/* Radar concentric background circles */}
-        <circle cx={width / 2} cy={height / 2} r={320} fill="none" stroke="#1c2d4a" strokeWidth="1" strokeDasharray="4 6" opacity="0.4" />
-        <circle cx={width / 2} cy={height / 2} r={220} fill="none" stroke="#1c2d4a" strokeWidth="1" strokeDasharray="4 6" opacity="0.4" />
-        <circle cx={width / 2} cy={height / 2} r={120} fill="none" stroke="#1c2d4a" strokeWidth="1" strokeDasharray="4 6" opacity="0.4" />
-        
-        {/* Radar crosshairs */}
-        <line x1={width / 2} y1={20} x2={width / 2} y2={height - 20} stroke="#1c2d4a" strokeWidth="0.8" opacity="0.3" strokeDasharray="2 4" />
-        <line x1={20} y1={height / 2} x2={width - 20} y2={height / 2} stroke="#1c2d4a" strokeWidth="0.8" opacity="0.3" strokeDasharray="2 4" />
+        {/* Ocean Background Grid */}
+        <rect width={width} height={height} fill="url(#oceanGrid)" />
+        <rect width={width} height={height} fill="url(#radarGridGlow)" />
 
-        {/* Flight Routes (Curved Arcs) */}
+        {/* Primary Radar Concentric Rings */}
+        <circle cx={width / 2} cy={height / 2} r={340} fill="none" stroke="#162744" strokeWidth="1" strokeDasharray="3 6" opacity="0.5" />
+        <circle cx={width / 2} cy={height / 2} r={240} fill="none" stroke="#162744" strokeWidth="1" strokeDasharray="3 6" opacity="0.5" />
+        <circle cx={width / 2} cy={height / 2} r={140} fill="none" stroke="#162744" strokeWidth="1" strokeDasharray="3 6" opacity="0.5" />
+
+        {/* Range Rings Distance Annotations */}
+        <text x={width / 2 + 145} y={height / 2 - 5} fill="#334155" fontSize="8" fontFamily="ui-monospace">400 NM</text>
+        <text x={width / 2 + 245} y={height / 2 - 5} fill="#334155" fontSize="8" fontFamily="ui-monospace">800 NM</text>
+        <text x={width / 2 + 345} y={height / 2 - 5} fill="#334155" fontSize="8" fontFamily="ui-monospace">1200 NM</text>
+
+        {/* Oceanic Labels */}
+        <g opacity="0.28" fill="#475569" fontFamily="ui-monospace" fontSize="11" letterSpacing="4">
+          <text x={110} y={530} transform="rotate(-15 110 530)">ARABIAN SEA</text>
+          <text x={610} y={530} transform="rotate(15 610 530)">BAY OF BENGAL</text>
+          <text x={340} y={740}>INDIAN OCEAN</text>
+          <text x={440} y={130} transform="rotate(-8 440 130)">HIMALAYAN CORRIDOR</text>
+        </g>
+
+        {/* --- INDIA GEOGRAPHIC MAP LAYER --- */}
+        {/* Landmass Shadow for 3D depth */}
+        <path
+          d={indiaSvgPath}
+          fill="none"
+          stroke="#00e5ff"
+          strokeWidth="3.5"
+          strokeOpacity="0.15"
+          filter="url(#cyanGlow)"
+        />
+
+        {/* India Continent Fill & Outer Border */}
+        <path
+          d={indiaSvgPath}
+          fill="url(#indiaLandmass)"
+          stroke="#00e5ff"
+          strokeWidth="1.8"
+          strokeOpacity="0.55"
+        />
+
+        {/* Sri Lanka Outline */}
+        <path
+          d={sriLankaSvgPath}
+          fill="#0c1829"
+          stroke="#00e5ff"
+          strokeWidth="1.2"
+          strokeOpacity="0.35"
+        />
+
+        {/* FIR Airspace Boundary Dividing Lines (Delhi, Mumbai, Kolkata, Chennai) */}
+        {showFirSectors && (
+          <g stroke="#00e5ff" strokeWidth="0.8" strokeDasharray="4 6" strokeOpacity="0.22">
+            {/* North-South dividing line through Nagpur */}
+            <line x1={firCrossroads.x} y1={paddingY} x2={firCrossroads.x} y2={height - paddingY} />
+            {/* East-West dividing line through Nagpur */}
+            <line x1={paddingX} y1={firCrossroads.y} x2={width - paddingX} y2={firCrossroads.y} />
+            
+            {/* Sector Labels */}
+            <text x={firCrossroads.x - 140} y={firCrossroads.y - 120} fill="#00e5ff" fontSize="9" fontFamily="ui-monospace" opacity="0.4">
+              VIDF • DELHI FIR
+            </text>
+            <text x={firCrossroads.x - 150} y={firCrossroads.y + 110} fill="#00e5ff" fontSize="9" fontFamily="ui-monospace" opacity="0.4">
+              VABF • MUMBAI FIR
+            </text>
+            <text x={firCrossroads.x + 80} y={firCrossroads.y - 110} fill="#00e5ff" fontSize="9" fontFamily="ui-monospace" opacity="0.4">
+              VECF • KOLKATA FIR
+            </text>
+            <text x={firCrossroads.x + 60} y={firCrossroads.y + 110} fill="#00e5ff" fontSize="9" fontFamily="ui-monospace" opacity="0.4">
+              VOMF • CHENNAI FIR
+            </text>
+          </g>
+        )}
+
+        {/* Live Sweeping Primary Radar Line */}
+        {showRadarSweep && (
+          <g>
+            <line
+              x1={width / 2}
+              y1={height / 2}
+              x2={width / 2 + 350}
+              y2={height / 2}
+              stroke="#00e5ff"
+              strokeWidth="1.5"
+              strokeOpacity="0.6"
+              filter="url(#cyanGlow)"
+              style={{
+                transformOrigin: `${width / 2}px ${height / 2}px`,
+                animation: 'radarSweepSpin 8s linear infinite'
+              }}
+            />
+          </g>
+        )}
+
+        {/* Flight Routes (Curved Arcs Between Indian Airports) */}
         {routes.map((route, idx) => {
           const fromCoord = airportCoords[route.from.id];
           const toCoord = airportCoords[route.to.id];
           if (!fromCoord || !toCoord) return null;
 
-          // Compute midpoint with slight curve
           const midX = (fromCoord.x + toCoord.x) / 2;
           const midY = (fromCoord.y + toCoord.y) / 2;
           const dx = toCoord.x - fromCoord.x;
           const dy = toCoord.y - fromCoord.y;
-          // Curve perpendicular
           const curvature = 0.12;
           const ctrlX = midX - dy * curvature;
           const ctrlY = midY + dx * curvature;
@@ -143,17 +308,17 @@ export default function NetworkMap() {
           const isClosedOrigin = disruption?.airportId === route.from.id;
           const isClosedDest = disruption?.airportId === route.to.id;
 
-          let strokeColor = '#10b981'; // green
+          let strokeColor = '#10b981'; // Green
           let strokeOpacity = 0.35;
-          let strokeWidth = 1.5;
+          let strokeWidth = 1.4;
 
           if (isClosedOrigin || isClosedDest || route.maxDelay >= 60) {
-            strokeColor = '#f43f5e'; // red
-            strokeOpacity = 0.7;
+            strokeColor = '#f43f5e'; // Red
+            strokeOpacity = 0.8;
             strokeWidth = 2.2;
           } else if (route.maxDelay > 0) {
-            strokeColor = '#f59e0b'; // amber
-            strokeOpacity = 0.55;
+            strokeColor = '#f59e0b'; // Amber
+            strokeOpacity = 0.6;
             strokeWidth = 1.8;
           }
 
@@ -171,7 +336,7 @@ export default function NetworkMap() {
           );
         })}
 
-        {/* Active Airborne Aircraft Movement */}
+        {/* Active Airborne Aircraft Moving on Corridors */}
         {activeAirborneFlights.map(f => {
           const fromCoord = airportCoords[f.origin];
           const toCoord = airportCoords[f.destination];
@@ -181,7 +346,6 @@ export default function NetworkMap() {
           const progress = duration > 0 ? (replayTimeMins - f.sim_dep_mins) / duration : 0;
           const clampedProgress = Math.max(0, Math.min(1, progress));
 
-          // Interpolate along curve
           const midX = (fromCoord.x + toCoord.x) / 2;
           const midY = (fromCoord.y + toCoord.y) / 2;
           const dx = toCoord.x - fromCoord.x;
@@ -190,7 +354,6 @@ export default function NetworkMap() {
           const ctrlX = midX - dy * curvature;
           const ctrlY = midY + dx * curvature;
 
-          // Bezier point calculation
           const t = clampedProgress;
           const curX = (1 - t) * (1 - t) * fromCoord.x + 2 * (1 - t) * t * ctrlX + t * t * toCoord.x;
           const curY = (1 - t) * (1 - t) * fromCoord.y + 2 * (1 - t) * t * ctrlY + t * t * toCoord.y;
@@ -199,14 +362,17 @@ export default function NetworkMap() {
             <g 
               key={`aircraft-${f.flight_id}`} 
               className="cursor-pointer"
-              onClick={() => setSelectedFlightId(f.flight_id)}
+              onClick={() => {
+                playRadarBlip();
+                setSelectedFlightId(f.flight_id);
+              }}
             >
               <circle
                 cx={curX}
                 cy={curY}
                 r="4.5"
                 fill={f.dep_delay_mins > 0 ? '#f59e0b' : '#00e5ff'}
-                filter="url(#glow)"
+                filter="url(#cyanGlow)"
               />
               <text
                 x={curX + 6}
@@ -222,7 +388,7 @@ export default function NetworkMap() {
           );
         })}
 
-        {/* Airport Nodes */}
+        {/* Airport Stations (16 Indian Cities) */}
         {Object.values(airportCoords).map(({ x, y, airport }) => {
           const isSelected = selectedAirportId === airport.id;
           const isClosed = disruption?.airportId === airport.id;
@@ -232,7 +398,10 @@ export default function NetworkMap() {
             <g
               key={airport.id}
               className="cursor-pointer group"
-              onClick={() => setSelectedAirportId(airport.id)}
+              onClick={() => {
+                playRadarBlip();
+                setSelectedAirportId(airport.id);
+              }}
               onMouseEnter={() => setHoveredAirport(airport)}
               onMouseLeave={() => setHoveredAirport(null)}
             >
@@ -241,10 +410,10 @@ export default function NetworkMap() {
                 <circle
                   cx={x}
                   cy={y}
-                  r="18"
+                  r="19"
                   fill="none"
                   stroke="#f43f5e"
-                  strokeWidth="2"
+                  strokeWidth="2.2"
                   className="animate-radar-pulse"
                 />
               )}
@@ -254,10 +423,10 @@ export default function NetworkMap() {
                 <circle
                   cx={x}
                   cy={y}
-                  r="14"
+                  r="15"
                   fill="none"
                   stroke="#00e5ff"
-                  strokeWidth="1.5"
+                  strokeWidth="1.6"
                   strokeDasharray="3 3"
                 />
               )}
@@ -266,23 +435,23 @@ export default function NetworkMap() {
               <circle
                 cx={x}
                 cy={y}
-                r={isHub ? 7 : 5}
+                r={isHub ? 7.5 : 5.5}
                 fill={isClosed ? '#f43f5e' : isSelected ? '#00e5ff' : isHub ? '#38bdf8' : '#94a3b8'}
-                stroke="#070b14"
-                strokeWidth="2"
-                filter={isSelected || isClosed ? 'url(#glow)' : undefined}
+                stroke="#050912"
+                strokeWidth="2.2"
+                filter={isSelected || isClosed ? 'url(#cyanGlow)' : undefined}
               />
 
-              {/* Airport Code Label */}
+              {/* Airport Code Callout Label */}
               <text
                 x={x}
-                y={y + (isHub ? 17 : 14)}
+                y={y + (isHub ? 18 : 15)}
                 textAnchor="middle"
-                fill={isClosed ? '#f43f5e' : isSelected ? '#00e5ff' : '#cbd5e1'}
-                fontSize={isHub ? "11" : "9.5"}
+                fill={isClosed ? '#f43f5e' : isSelected ? '#00e5ff' : '#e2e8f0'}
+                fontSize={isHub ? "11.5" : "10"}
                 fontFamily="ui-monospace"
                 fontWeight="bold"
-                className="group-hover:fill-aviation-cyan transition"
+                className="group-hover:fill-aviation-cyan transition drop-shadow-md"
               >
                 {airport.id}
               </text>
@@ -291,9 +460,25 @@ export default function NetworkMap() {
         })}
       </svg>
 
-      {/* Hover / Selection Airport Detail Card */}
+      {/* Legend Bar at Bottom */}
+      <div className="absolute bottom-3 right-4 z-10 flex items-center space-x-3 text-[10px] font-mono bg-aviation-darkest/90 px-3 py-1.5 rounded-lg border border-aviation-cardBorder text-slate-400">
+        <div className="flex items-center space-x-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+          <span>Nominal</span>
+        </div>
+        <div className="flex items-center space-x-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+          <span>Delayed (&lt;60m)</span>
+        </div>
+        <div className="flex items-center space-x-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+          <span>Severe / Ground Stop</span>
+        </div>
+      </div>
+
+      {/* Hover / Selected Airport Telemetry Card */}
       {(hoveredAirport || selectedAirportId) && (
-        <div className="absolute bottom-4 left-4 z-20 glass-panel p-3.5 rounded-lg border border-aviation-cyan/30 text-xs font-mono max-w-sm pointer-events-none shadow-glow-cyan">
+        <div className="absolute bottom-3 left-4 z-20 glass-panel p-3.5 rounded-xl border border-aviation-cyan/40 text-xs font-mono max-w-sm pointer-events-none shadow-glow-cyan">
           {(() => {
             const a = hoveredAirport || AIRPORTS_MAP.get(selectedAirportId!)!;
             if (!a) return null;
@@ -309,7 +494,9 @@ export default function NetworkMap() {
                     <MapPin className="w-4 h-4 text-aviation-cyan" />
                     <span className="font-bold text-sm text-white">{a.id} • {a.city}</span>
                   </div>
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] ${isClosed ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                    isClosed ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40' : 'bg-emerald-500/20 text-emerald-400'
+                  }`}>
                     {isClosed ? 'CLOSED RUNWAY' : 'OPERATIONAL'}
                   </span>
                 </div>
@@ -317,8 +504,8 @@ export default function NetworkMap() {
                 <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 text-slate-300">
                   <div>Tier: <span className="text-aviation-cyan capitalize">{a.tier.replace('_', ' ')}</span></div>
                   <div>Capacity: <span className="text-aviation-cyan">{a.capacity_per_hour} fl/hr</span></div>
-                  <div>Departures: <span className="text-white">{depFlights.length}</span></div>
-                  <div>Arrivals: <span className="text-white">{arrFlights.length}</span></div>
+                  <div>Departures: <span className="text-white font-semibold">{depFlights.length}</span></div>
+                  <div>Arrivals: <span className="text-white font-semibold">{arrFlights.length}</span></div>
                 </div>
                 {delayedCount > 0 && (
                   <div className="pt-1 text-amber-400 text-[11px] flex items-center gap-1 font-semibold">
@@ -331,6 +518,18 @@ export default function NetworkMap() {
           })()}
         </div>
       )}
+
+      {/* Global CSS for Radar Sweep Spin Animation */}
+      <style jsx global>{`
+        @keyframes radarSweepSpin {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
+          }
+        }
+      `}</style>
     </div>
   );
 }
