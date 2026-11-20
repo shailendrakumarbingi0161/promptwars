@@ -358,32 +358,75 @@ export default function NetworkMap() {
           const curX = (1 - t) * (1 - t) * fromCoord.x + 2 * (1 - t) * t * ctrlX + t * t * toCoord.x;
           const curY = (1 - t) * (1 - t) * fromCoord.y + 2 * (1 - t) * t * ctrlY + t * t * toCoord.y;
 
+          // Tangent heading angle calculation for aircraft orientation
+          const tangentX = 2 * (1 - t) * (ctrlX - fromCoord.x) + 2 * t * (toCoord.x - ctrlX);
+          const tangentY = 2 * (1 - t) * (ctrlY - fromCoord.y) + 2 * t * (toCoord.y - ctrlY);
+          const headingDeg = (Math.atan2(tangentY, tangentX) * 180) / Math.PI;
+
+          const isDelayed = f.dep_delay_mins > 0;
+          const planeColor = isDelayed ? '#f59e0b' : '#00e5ff';
+
           return (
             <g 
               key={`aircraft-${f.flight_id}`} 
-              className="cursor-pointer"
+              className="cursor-pointer group"
+              transform={`translate(${curX}, ${curY})`}
               onClick={() => {
                 playRadarBlip();
                 setSelectedFlightId(f.flight_id);
               }}
             >
-              <circle
-                cx={curX}
-                cy={curY}
-                r="4.5"
-                fill={f.dep_delay_mins > 0 ? '#f59e0b' : '#00e5ff'}
-                filter="url(#cyanGlow)"
-              />
-              <text
-                x={curX + 6}
-                y={curY - 4}
-                fill="#ffffff"
-                fontSize="9"
-                fontFamily="ui-monospace"
-                fontWeight="bold"
-              >
-                {f.flight_id}
-              </text>
+              {/* Rotating Jet Aircraft Silhouette */}
+              <g transform={`rotate(${headingDeg})`}>
+                {/* Aircraft Jet Engine Exhaust Trail */}
+                <line
+                  x1="-10"
+                  y1="0"
+                  x2="-22"
+                  y2="0"
+                  stroke={planeColor}
+                  strokeWidth="1.5"
+                  strokeOpacity="0.45"
+                  strokeDasharray="3 3"
+                />
+
+                {/* Symmetrical Commercial Jet Airliner Silhouette (Pointing +X) */}
+                <path
+                  d="M 13 0 L 8 -2.4 L 2 -11 L -0.5 -11 L 1.8 -2.4 L -5 -2.4 L -8 -7 L -10.5 -7 L -8.5 0 L -10.5 7 L -8 7 L -5 2.4 L 1.8 2.4 L -0.5 11 L 2 11 L 8 2.4 Z"
+                  fill={planeColor}
+                  stroke="#050912"
+                  strokeWidth="0.9"
+                  filter="url(#cyanGlow)"
+                  className="transition-transform group-hover:scale-125"
+                />
+              </g>
+
+              {/* Callout Flight Badge with Call Sign & Delay */}
+              <g transform="translate(12, -12)">
+                <rect
+                  x="-3"
+                  y="-11"
+                  width={isDelayed ? "68" : "48"}
+                  height="15"
+                  rx="3.5"
+                  fill="#070b14"
+                  fillOpacity="0.9"
+                  stroke={planeColor}
+                  strokeWidth="0.8"
+                  strokeOpacity="0.7"
+                />
+                <text
+                  x="2"
+                  y="0"
+                  fill="#ffffff"
+                  fontSize="8.5"
+                  fontFamily="ui-monospace"
+                  fontWeight="bold"
+                >
+                  {f.flight_id}
+                  {isDelayed ? ` +${f.dep_delay_mins}m` : ''}
+                </text>
+              </g>
             </g>
           );
         })}
