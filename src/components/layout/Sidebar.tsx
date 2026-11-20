@@ -15,7 +15,10 @@ import {
   BarChart3, 
   Database, 
   Settings,
-  ChevronRight
+  ChevronRight,
+  Plane,
+  Network,
+  Clock
 } from 'lucide-react';
 
 interface NavItem {
@@ -32,6 +35,27 @@ export default function Sidebar() {
   const navItems: NavItem[] = [
     { id: 'overview', label: 'Operations Overview', icon: Activity },
     { id: 'network', label: 'Airport Network Radar', icon: Radar },
+    { 
+      id: 'vulnerability', 
+      label: 'Vulnerability Heat Map', 
+      icon: Network,
+      badge: 'Advanced',
+      badgeColor: 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+    },
+    { 
+      id: 'spares', 
+      label: 'Smart Spare Allocation', 
+      icon: Plane,
+      badge: '2 Spares',
+      badgeColor: 'bg-aviation-cyan/20 text-aviation-cyan border border-aviation-cyan/30'
+    },
+    { 
+      id: 'replay', 
+      label: 'Domino Replay Timeline', 
+      icon: Clock,
+      badge: 'Interactive',
+      badgeColor: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+    },
     { 
       id: 'simulator', 
       label: 'Disruption Simulator', 
@@ -81,7 +105,7 @@ export default function Sidebar() {
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-mono transition-all text-left group ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-mono transition-all text-left group ${
                 isActive
                   ? 'bg-aviation-card border border-aviation-cyan/40 text-white font-semibold shadow-glow-cyan'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'

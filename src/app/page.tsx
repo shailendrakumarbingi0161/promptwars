@@ -16,6 +16,9 @@ import RecoverySandboxView from '@/components/views/RecoverySandboxView';
 import ComparisonView from '@/components/views/ComparisonView';
 import DatasetView from '@/components/views/DatasetView';
 import SettingsView from '@/components/views/SettingsView';
+import SmartSpareView from '@/components/views/SmartSpareView';
+import VulnerabilityView from '@/components/views/VulnerabilityView';
+import ReplayView from '@/components/views/ReplayView';
 
 function MainAppContent() {
   const { activeTab } = useSimulation();
@@ -26,6 +29,12 @@ function MainAppContent() {
         return <OverviewView />;
       case 'network':
         return <NetworkView />;
+      case 'vulnerability':
+        return <VulnerabilityView />;
+      case 'spares':
+        return <SmartSpareView />;
+      case 'replay':
+        return <ReplayView />;
       case 'simulator':
         return <SimulatorView />;
       case 'flights':
