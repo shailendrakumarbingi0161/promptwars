@@ -117,7 +117,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 Domino Sky is designed for zero-config production deployment on Vercel:
 
-1. Push your repository to GitHub under `shailendrakumarbingi0161/domino-sky`.
+1. Push your repository to GitHub under `shailendrakumarbingi0161/promptwars`.
 2. Import the project in the [Vercel Dashboard](https://vercel.com/new).
 3. Framework Preset: **Next.js**.
 4. Click **Deploy**.
